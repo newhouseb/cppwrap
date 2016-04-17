@@ -1,21 +1,23 @@
-import clang
 import clang.cindex
 import re
-from collections import defaultdict
+import sys
+import os.path
 
-API_PATH = '/Users/ben/src/openvr/headers/openvr.h'
-OUTPUT_PATH = '/Users/ben/src/openvr/headers/openvr.cpp'
-OUTPUT_HEADER = '/Users/ben/src/openvr/headers/openvrc.h'
+if len(sys.argv) != 4:
+        print "Usage `python wrap.py [header to wrap] [prefix to include in c header] [clang library location]`"
+        exit(0)
 
-clang.cindex.Config.set_library_path('/Users/ben/tools/clang-3.8/lib')
+API_PATH = sys.argv[1] #'/Users/ben/src/openvr/headers/openvr.h'
+OUTPUT_PATH = os.path.basename(API_PATH).split('.')[0] + '_c.cpp'
+OUTPUT_HEADER = os.path.basename(API_PATH).split('.')[0] + '_c.h'
+
+clang.cindex.Config.set_library_path(sys.argv[3]) #'/Users/ben/tools/clang-3.8/lib'
 index = clang.cindex.Index.create()
-translation_unit = index.parse(API_PATH, ['-x', 'c++', '-DGNUC'])
+translation_unit = index.parse(API_PATH, ['-x', 'c++'])
 
 from clang.cindex import CursorKind
 
-namespace_map = defaultdict(set)
 defined = set()
-
 
 input_file = open(API_PATH).read()
 output = open(OUTPUT_PATH, 'w')
@@ -79,8 +81,6 @@ def traverse(cursor, padding='', ns=[]):
 
             # For static variable definitions, basically just copypasta everything out
             if child_node.kind == CursorKind.VAR_DECL:
-                namespace_map['::'.join(ns)].add(child_node.spelling)
-
                 emit_header(input_file[child_node.extent.start.offset:child_node.extent.end.offset] + ';')
 
                 continue
@@ -90,8 +90,6 @@ def traverse(cursor, padding='', ns=[]):
 
                 # Create a C compatible name
                 flattened_name = child_node.spelling
-
-                namespace_map['::'.join(ns)].add(child_node.spelling)
 
                 # In the C Header, classes turn into opaque structs
                 emit_header('// *********** ')
@@ -171,17 +169,12 @@ def traverse(cursor, padding='', ns=[]):
 
 emit_header('#include <stdbool.h>')
 emit_header('#include <stdint.h>')
-emit_header('#define VR_INTERFACE')
-emit_header('#define VR_CALLTYPE')
+emit_header(open(sys.argv[2]).read())
 
-emit('#include "openvr.h"')
+emit('#include "' + os.path.basename(API_PATH) + '"')
 emit('extern "C" {')
 traverse(translation_unit.cursor)
 emit('}')
 
-for ns, declaration in namespace_map.iteritems():
-    for d in declaration:
-        continue
-        print ns, d
-
 print "Goodbye"
+
